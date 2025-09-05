@@ -1,0 +1,124 @@
+classify_tumour:
+  description: >
+    Classify a breast histopathology image ({{image_path}}) to detect the presence or absence of tumour cells.
+    This task uses the tumour_classifier agent to return a binary label ("tumour" or "no tumour") along with
+    a confidence score between 0 and 1. If the confidence score is below 0.60, the output is flagged for
+    human review to ensure clinical safety. The input image is assumed to be preprocessed to the classifier’s
+    expected format (resolution, color normalization, file type).
+  agent: tumour_classifier
+  inputs:
+    - image_path: Path to the breast histopathology image file (e.g., .png, .jpg, .tiff)
+  expected_output: >
+    A JSON object containing:
+      - label: "tumour" or "no tumour"
+      - confidence: Float between 0.0 and 1.0
+
+    Example:
+      {
+        "label": "tumour",
+        "confidence": 0.87
+      }
+  downstream_usage: >
+    The output is consumed by the diagnostic_mapper task, which applies confidence-based routing.
+    High-confidence predictions are translated into guideline queries, while low-confidence cases
+    are flagged for review before progressing downstream.
+
+map_diagnosis:
+  description: >
+    Map the classifier’s prediction into a structured diagnostic query for clinical guidelines.
+    If "tumour" is predicted with confidence ≥ 0.60, request guideline-based treatment recommendations.
+    If "no tumour" is predicted with confidence ≥ 0.60, indicate that no treatment is required.
+    If confidence < 0.60, still produce a query but add a clear note recommending human review.
+  agent: diagnostic_mapper
+  expected_output: >
+    If tumour (confidence ≥ 0.60) →
+      'Breast cancer present (confidence: X%). Query NCCN/WHO for treatment recommendations.'
+    If no tumour (confidence ≥ 0.60) →
+      'No breast cancer detected (confidence: X%). No treatment required.'
+    If confidence < 0.60 →
+      'Low confidence in prediction (X%). Recommend human review. Proceeding with downstream
+       tasks for demo/testing.'
+
+retrieve_guidelines:
+  description: >
+    Retrieve relevant breast cancer guidelines from NCCN and WHO sources.
+    This task uses a retrieval-augmented generation (RAG) tool to extract the most applicable passages
+    from guideline PDFs and provide clinical context with citations.
+  agent: guideline_retriever
+  expected_output: >
+    A curated set of guideline excerpts including:
+    - Clinical context
+    - Source citations (e.g., NCCN 2024, WHO Breast Cancer Manual)
+    - Relevance to the mapped diagnosis
+
+recommend_treatment:
+  description: >
+    Generate a structured treatment plan based on retrieved guideline excerpts.
+    Recommendations must align with clinical best practices and include justifications
+    derived from the cited guidelines.
+  agent: treatment_recommender
+  expected_output: >
+    A structured treatment plan including:
+    - Recommended procedures (e.g., lumpectomy, chemotherapy)
+    - Timeline and staging
+    - Justification linked to guideline excerpts
+
+validate_plan:
+  description: >
+    Validate the proposed treatment plan for consistency, completeness, and alignment
+    with retrieved guidelines. This step highlights discrepancies, flags concerns,
+    and assigns a confidence level to the overall plan.
+  agent: validator
+  expected_output: >
+    - Confidence score: High / Medium / Low
+    - List of flagged issues or conflicts (if any)
+    - Suggestions for improvement or clarification
+
+explain_to_patient:
+  description: >
+    Provide a patient-friendly explanation of the treatment plan.
+    This task simplifies medical language, clarifies complex steps, and offers emotional reassurance
+    while explaining the rationale for the recommended treatment.
+  agent: patient_explainer
+  expected_output: >
+    A clear explanation including:
+    - What the treatment involves
+    - Why it is recommended
+    - What to expect during and after treatment
+    - Reassurance and supportive context
+
+generate_patient:
+  description: >
+    Generate a realistic but anonymous patient identity for use in the treatment report.
+    This task ensures diversity and anonymity while personalizing reports for testing purposes.
+  agent: patient_generator
+  expected_output: >
+    A patient identity such as:
+    Name: Jane Doe
+    Address: 123 Maple Street, Leeds, UK
+
+generate_doctor:
+  description: >
+    Generate a realistic doctor profile relevant to breast cancer treatment.
+    The profile includes a name, specialization, and practice location to enhance credibility.
+  agent: doctor_generator
+  expected_output: >
+    A doctor profile including:
+    Name: Dr. Aisha Patel
+    Specialization: Breast Surgical Oncologist
+    Address: St. Mary’s Cancer Center, London, UK
+
+write_report:
+  description: >
+    Compile all generated components—patient identity, doctor profile, diagnosis,
+    treatment plan, and patient explanation—into a professionally formatted report.
+    The final report must be clear, structured, empathetic, and saved as a PDF.
+  agent: report_writer
+  expected_output: >
+    A complete treatment report saved as treatment_report.pdf containing:
+    - Patient Information
+    - Doctor Information
+    - Diagnosis Summary
+    - Treatment Plan
+    - Patient Explanation
+    - Follow-Up Notes
